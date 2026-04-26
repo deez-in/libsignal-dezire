@@ -29,6 +29,21 @@ pub struct KeyPair {
     pub public: [u8; 33],
 }
 
+impl KeyPair {
+    pub fn new(secret: Option<&[u8; 32]>) -> Self {
+        match secret {
+            Some(seed) => {
+                let public = gen_pubkey(seed);
+                KeyPair {
+                    secret: *seed,
+                    public,
+                }
+            }
+            None => gen_keypair(),
+        }
+    }
+}
+
 /// Represents the output of a VXEdDSA signature operation.
 #[repr(C)]
 #[derive(Debug, PartialEq)]
@@ -37,6 +52,34 @@ pub struct VXEdDSAOutput {
     pub signature: [u8; 96],
     /// The 32-byte VRF output `v`, which serves as a proof of randomness.
     pub vrf: [u8; 32],
+}
+
+/// Error type for VXEdDSA signing operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VxeddsaSignError {
+    _private: (),
+}
+
+impl VxeddsaSignError {
+    pub(crate) fn new() -> Self {
+        VxeddsaSignError { _private: () }
+    }
+}
+
+impl From<()> for VxeddsaSignError {
+    fn from(_: ()) -> Self {
+        VxeddsaSignError::new()
+    }
+}
+
+impl VXEdDSAOutput {
+    pub fn signature_bytes(&self) -> [u8; 96] {
+        self.signature
+    }
+
+    pub fn vrf_bytes(&self) -> [u8; 32] {
+        self.vrf
+    }
 }
 
 // ============================================================================
@@ -85,8 +128,8 @@ pub fn gen_pubkey(k: &[u8; 32]) -> [u8; 33] {
 /// # Returns
 ///
 /// * `Ok(VXEdDSAOutput)` on success.
-/// * `Err(())` on error (e.g. invalid scalar).
-pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, ()> {
+/// * `Err(VxeddsaSignError)` on error (e.g. invalid scalar).
+pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, VxeddsaSignError> {
     use crate::hashes::{SignalHash2, hash_i};
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use rand_core::RngCore;
@@ -123,7 +166,7 @@ pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, ()> {
     let r = Scalar::from_bytes_mod_order_wide(&r_hash);
 
     if r.ct_eq(&Scalar::ZERO).into() {
-        return Err(());
+        return Err(VxeddsaSignError::new());
     }
 
     let R_point = ED25519_BASEPOINT_POINT * r;

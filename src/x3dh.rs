@@ -35,6 +35,22 @@ pub struct SignedPreKey {
     pub signature: [u8; 96],
 }
 
+impl SignedPreKey {
+    pub fn new(id: u32, identity_secret: &[u8; 32]) -> Result<Self, X3DHError> {
+        use crate::vxeddsa::{gen_keypair, vxeddsa_sign};
+
+        let spk_keypair = gen_keypair();
+        let sig_output = vxeddsa_sign(identity_secret, &spk_keypair.public)
+            .map_err(|_| X3DHError::InvalidSignature)?;
+
+        Ok(SignedPreKey {
+            id,
+            public_key: spk_keypair.public,
+            signature: sig_output.signature,
+        })
+    }
+}
+
 /// Represents a One-Time Prekey (Public Part).
 #[derive(Clone, Debug)]
 pub struct OneTimePreKey {
@@ -50,6 +66,22 @@ pub struct PreKeyBundle {
     pub identity_key: X3DHPublicKey,
     pub signed_prekey: SignedPreKey,
     pub one_time_prekey: Option<OneTimePreKey>,
+}
+
+impl PreKeyBundle {
+    pub fn new(
+        identity_public: X3DHPublicKey,
+        identity_secret: &X3DHPrivateKey,
+        spk_id: u32,
+        one_time_prekey: Option<OneTimePreKey>,
+    ) -> Result<Self, X3DHError> {
+        let signed_prekey = SignedPreKey::new(spk_id, identity_secret)?;
+        Ok(PreKeyBundle {
+            identity_key: identity_public,
+            signed_prekey,
+            one_time_prekey,
+        })
+    }
 }
 
 /// Error types for X3DH operations.

@@ -4,7 +4,8 @@
 //! that call the native Rust API in [`crate::vxeddsa`].
 
 use crate::vxeddsa::{
-    KeyPair, VXEdDSAOutput, gen_keypair, gen_pubkey, gen_secret, vxeddsa_sign, vxeddsa_verify,
+    KeyPair, VXEdDSAOutput, VxeddsaSignError, gen_keypair, gen_pubkey, gen_secret, vxeddsa_sign,
+    vxeddsa_verify,
 };
 
 // ============================================================================
@@ -76,7 +77,7 @@ pub extern "C" fn vxeddsa_sign_ffi(
             }
             0
         }
-        Err(()) => -1,
+        Err(VxeddsaSignError::new()) => -1,
     }
 }
 
@@ -223,7 +224,7 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxedds
     // Call native API directly
     let output = match vxeddsa_sign(&k_arr, &m) {
         Ok(o) => o,
-        Err(()) => return JObject::null().into_raw(),
+        Err(VxeddsaSignError::new()) => return JObject::null().into_raw(),
     };
 
     let map_class = match env.find_class("java/util/HashMap") {
