@@ -35,6 +35,8 @@
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub(crate) mod hashes;
+#[cfg(feature = "jni")]
+pub mod jni;
 pub mod ratchet;
 pub mod utils;
 pub mod vxeddsa;

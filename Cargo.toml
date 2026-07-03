@@ -33,4 +33,5 @@ opt-level = 0
 opt-level = 3
 
 [features]
-ffi = ["dep:jni"]
+ffi = []
+jni = ["dep:jni"]
