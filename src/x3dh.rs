@@ -138,10 +138,10 @@ pub fn x3dh_initiator(
         return Err(X3DHError::InvalidKey);
     }
 
-    if let Some(ref opk) = bundle.one_time_prekey {
-        if !is_valid_public_key(&opk.public_key) {
-            return Err(X3DHError::InvalidKey);
-        }
+    if let Some(ref opk) = bundle.one_time_prekey
+        && !is_valid_public_key(&opk.public_key)
+    {
+        return Err(X3DHError::InvalidKey);
     }
 
     // 1. Verify Signed PreKey Signature: Sig(IKB, Encode(SPKB))

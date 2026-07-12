@@ -2,19 +2,20 @@
 //!
 //! This module provides Android JNI bindings that call the native Rust API in [`crate::ratchet`].
 
+#[cfg(target_os = "android")]
 use crate::ratchet::*;
-use crate::x3dh::*;
-
-// ============================================================================
-// JNI Bindings (Android Only)
-// ============================================================================
-
+#[cfg(target_os = "android")]
+use crate::utils::decode_public_key;
 #[cfg(target_os = "android")]
 use jni::JNIEnv;
 #[cfg(target_os = "android")]
 use jni::objects::{JByteArray, JObject, JValue};
 #[cfg(target_os = "android")]
 use jni::sys::{jbyteArray, jlong, jobject};
+#[cfg(target_os = "android")]
+use std::ptr;
+#[cfg(target_os = "android")]
+use x25519_dalek::{PublicKey, StaticSecret};
 
 #[cfg(target_os = "android")]
 fn get_byte_array(env: &mut JNIEnv, arr: jbyteArray) -> Option<Vec<u8>> {
@@ -51,8 +52,15 @@ pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule
     let sk: [u8; 32] = sk_vec.try_into().unwrap();
     let pub_key: [u8; 33] = pub_vec.try_into().unwrap();
 
-    let state = unsafe { ratchet_init_sender_ffi(&sk, &pub_key) };
-    state as jlong
+    let decoded = match decode_public_key(&pub_key) {
+        Ok(k) => k,
+        Err(_) => return 0,
+    };
+    let receiver_pub = PublicKey::from(decoded);
+    match init_sender_state(sk, receiver_pub) {
+        Ok(state) => Box::into_raw(Box::new(state)) as jlong,
+        Err(_) => 0,
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -81,8 +89,13 @@ pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule
     let priv_key: [u8; 32] = priv_vec.try_into().unwrap();
     let pub_key: [u8; 33] = pub_vec.try_into().unwrap();
 
-    let state = unsafe { ratchet_init_receiver_ffi(&sk, &priv_key, &pub_key) };
-    state as jlong
+    let decoded = match decode_public_key(&pub_key) {
+        Ok(k) => k,
+        Err(_) => return 0,
+    };
+    let key_pair = (StaticSecret::from(priv_key), PublicKey::from(decoded));
+    let state = init_receiver_state(sk, key_pair);
+    Box::into_raw(Box::new(state)) as jlong
 }
 
 #[cfg(target_os = "android")]
@@ -94,7 +107,7 @@ pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule
 ) {
     if state_ptr != 0 {
         unsafe {
-            ratchet_free_ffi(state_ptr as *mut RatchetState);
+            drop(Box::from_raw(state_ptr as *mut RatchetState));
         }
     }
 }

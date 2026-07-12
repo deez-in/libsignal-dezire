@@ -22,7 +22,7 @@ pub fn hash_i(i: u8, x: &[u8]) -> [u8; 64] {
     prefix[0] -= i; // e.g., 0xFF - 1 = 0xFE
 
     let mut hasher = Sha512::new();
-    hasher.update(&prefix);
+    hasher.update(prefix);
     hasher.update(x);
     hasher.finalize().into()
 }
@@ -40,7 +40,7 @@ impl Default for SignalHash2 {
         // we subtract 2 from the first byte. 0xFF - 2 = 0xFD.
         let mut prefix = [0xFFu8; 32];
         prefix[0] = 0xFD;
-        hasher.update(&prefix);
+        hasher.update(prefix);
         Self(hasher)
     }
 }

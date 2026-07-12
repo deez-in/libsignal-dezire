@@ -15,7 +15,7 @@ use crate::utils::encode_public_key;
 /// # Safety
 /// The caller must ensure that `out` is valid for writes of 33 bytes.
 #[unsafe(no_mangle)]
-pub extern "C" fn encode_public_key_ffi(key: &[u8; 32], out: *mut u8) {
+pub unsafe extern "C" fn encode_public_key_ffi(key: &[u8; 32], out: *mut u8) {
     if out.is_null() {
         return;
     }

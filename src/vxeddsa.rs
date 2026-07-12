@@ -39,6 +39,13 @@ pub struct VXEdDSAOutput {
     pub vrf: [u8; 32],
 }
 
+/// Error type for VXEdDSA operations.
+#[derive(Debug, PartialEq)]
+pub enum VXEdDSAError {
+    /// The provided scalar was invalid (e.g. zero or non-canonical).
+    InvalidScalar,
+}
+
 // ============================================================================
 // Native Rust API (used internally and by FFI wrappers)
 // ============================================================================
@@ -48,7 +55,7 @@ pub struct VXEdDSAOutput {
 /// Use this function to create a new identity. It uses a cryptographically secure
 /// random number generator to create the secret key.
 pub fn gen_keypair() -> KeyPair {
-    let secret = StaticSecret::random_from_rng(&mut OsRng);
+    let secret = StaticSecret::random_from_rng(OsRng);
     let public_raw = PublicKey::from(&secret);
     let public_bytes = crate::utils::encode_public_key(public_raw.as_bytes());
     KeyPair {
@@ -59,7 +66,7 @@ pub fn gen_keypair() -> KeyPair {
 
 /// Generates a random 32-byte secret key.
 pub fn gen_secret() -> [u8; 32] {
-    let secret = StaticSecret::random_from_rng(&mut OsRng);
+    let secret = StaticSecret::random_from_rng(OsRng);
     secret.to_bytes()
 }
 
@@ -85,8 +92,8 @@ pub fn gen_pubkey(k: &[u8; 32]) -> [u8; 33] {
 /// # Returns
 ///
 /// * `Ok(VXEdDSAOutput)` on success.
-/// * `Err(())` on error (e.g. invalid scalar).
-pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, ()> {
+/// * `Err(VXEdDSAError)` on error (e.g. invalid scalar).
+pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, VXEdDSAError> {
     use crate::hashes::{SignalHash2, hash_i};
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use rand_core::RngCore;
@@ -123,7 +130,7 @@ pub fn vxeddsa_sign(k: &[u8; 32], message: &[u8]) -> Result<VXEdDSAOutput, ()> {
     let r = Scalar::from_bytes_mod_order_wide(&r_hash);
 
     if r.ct_eq(&Scalar::ZERO).into() {
-        return Err(());
+        return Err(VXEdDSAError::InvalidScalar);
     }
 
     let R_point = ED25519_BASEPOINT_POINT * r;

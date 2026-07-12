@@ -38,7 +38,6 @@ use x25519_dalek::{PublicKey, StaticSecret};
 ///
 /// Let's use the "Output Struct" approach where Rust allocates and C must call `signal_free_buffer`.
 /// Or, we can use `RatchetEncryptedOutput` struct.
-
 #[repr(C)]
 pub struct RatchetEncryptResult {
     pub header: *mut u8,
@@ -55,7 +54,10 @@ pub struct RatchetDecryptResult {
     pub status: i32, // 0 = Success, Error codes < 0
 }
 
-// Helper to free results
+/// Free buffers returned by ratchet_encrypt_ffi.
+///
+/// # Safety
+/// * `header` and `ciphertext` must be valid pointers returned by encryption, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_free_result_buffers(
     header: *mut u8,
@@ -73,6 +75,10 @@ pub unsafe extern "C" fn ratchet_free_result_buffers(
     }
 }
 
+/// Free a byte buffer.
+///
+/// # Safety
+/// * `buffer` must be a valid pointer returned by decryption, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_free_byte_buffer(buffer: *mut u8, len: usize) {
     unsafe {
@@ -89,6 +95,10 @@ pub unsafe extern "C" fn ratchet_free_byte_buffer(buffer: *mut u8, len: usize) {
 /// Initialize sender state.
 /// Returns a pointer to the opaque RatchetState object.
 /// Returns NULL on failure.
+///
+/// # Safety
+/// * `sk` must be a valid pointer to a 32-byte secret key.
+/// * `receiver_dh_public` must be a valid pointer to a 33-byte public key.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_init_sender_ffi(
     sk: &[u8; 32],
@@ -107,6 +117,11 @@ pub unsafe extern "C" fn ratchet_init_sender_ffi(
 
 /// Initialize receiver state.
 /// Returns a pointer to the opaque RatchetState object.
+///
+/// # Safety
+/// * `sk` must be a valid pointer to a 32-byte secret key.
+/// * `receiver_dh_private` must be a valid pointer to a 32-byte private key.
+/// * `receiver_dh_public` must be a valid pointer to a 33-byte public key.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_init_receiver_ffi(
     sk: &[u8; 32],
@@ -126,6 +141,9 @@ pub unsafe extern "C" fn ratchet_init_receiver_ffi(
 }
 
 /// Free the RatchetState object.
+///
+/// # Safety
+/// * `state` must be a valid pointer to a RatchetState returned by an init function, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_free_ffi(state: *mut RatchetState) {
     unsafe {
@@ -137,6 +155,12 @@ pub unsafe extern "C" fn ratchet_free_ffi(state: *mut RatchetState) {
 
 /// Encrypt a message.
 /// Caller MUST free the returned buffers using `ratchet_free_result_buffers`.
+///
+/// # Safety
+/// * `state_ptr` must be a valid pointer to a RatchetState.
+/// * `plaintext` must point to `plaintext_len` valid bytes.
+/// * `ad` must point to `ad_len` valid bytes.
+/// * `output` must point to a valid RatchetEncryptResult struct.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_encrypt_ffi(
     state_ptr: *mut RatchetState,
@@ -209,6 +233,11 @@ pub unsafe extern "C" fn ratchet_encrypt_ffi(
 
 /// Decrypt a message.
 /// Caller MUST free the returned buffer using `ratchet_free_byte_buffer`.
+///
+/// # Safety
+/// * `state_ptr` must be a valid pointer to a RatchetState.
+/// * `header`, `ciphertext`, and `ad` must point to valid byte arrays of their respective lengths.
+/// * `output` must point to a valid RatchetDecryptResult struct.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_decrypt_ffi(
     state_ptr: *mut RatchetState,
@@ -230,7 +259,7 @@ pub unsafe extern "C" fn ratchet_decrypt_ffi(
     // Ciphertext can be empty? Technically yes, but usually no.
     // Decrypt AEAD checks size >= 48.
 
-    let state = unsafe { &mut *(state_ptr as *mut RatchetState) };
+    let state = unsafe { &mut *state_ptr };
 
     let header_slice = unsafe { slice::from_raw_parts(header, header_len) };
 
@@ -303,6 +332,9 @@ fn map_error(e: RatchetError) -> i32 {
 /// Serialize RatchetState to JSON string.
 /// Returns pointer to C string (null-terminated).
 /// Caller MUST free the string using `ratchet_free_string`.
+///
+/// # Safety
+/// * `state_ptr` must be a valid pointer to a RatchetState.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_serialize(state_ptr: *const RatchetState) -> *mut c_char {
     if state_ptr.is_null() {
@@ -321,6 +353,9 @@ pub unsafe extern "C" fn ratchet_serialize(state_ptr: *const RatchetState) -> *m
 
 /// Deserialize RatchetState from JSON string.
 /// Returns pointer to RatchetState or NULL on failure.
+///
+/// # Safety
+/// * `json_ptr` must be a valid pointer to a null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_deserialize(json_ptr: *const c_char) -> *mut RatchetState {
     if json_ptr.is_null() {
@@ -339,6 +374,9 @@ pub unsafe extern "C" fn ratchet_deserialize(json_ptr: *const c_char) -> *mut Ra
 }
 
 /// Free a string returned by ratchet_serialize.
+///
+/// # Safety
+/// * `s` must be a valid pointer to a string allocated by `ratchet_serialize`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ratchet_free_string(s: *mut c_char) {
     if !s.is_null() {

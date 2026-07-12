@@ -2,12 +2,8 @@
 //!
 //! This module provides Android JNI bindings that call the native Rust API in [`crate::utils`].
 
+#[cfg(target_os = "android")]
 use crate::utils::*;
-
-// ============================================================================
-// JNI Bindings (Android Only)
-// ============================================================================
-
 #[cfg(target_os = "android")]
 use jni::JNIEnv;
 #[cfg(target_os = "android")]

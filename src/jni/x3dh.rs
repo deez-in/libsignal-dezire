@@ -2,12 +2,8 @@
 //!
 //! This module provides Android JNI bindings that call the native Rust API in [`crate::x3dh`].
 
+#[cfg(target_os = "android")]
 use crate::x3dh::*;
-
-// ============================================================================
-// JNI Bindings (Android Only)
-// ============================================================================
-
 #[cfg(target_os = "android")]
 use jni::JNIEnv;
 #[cfg(target_os = "android")]
@@ -68,38 +64,24 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_x3dhIn
     // Convert to fixed arrays
     let id_priv_fixed: [u8; 32] = id_priv.try_into().unwrap();
 
-    // Build X3DHBundleInput struct (shared pattern with C FFI)
-    let bundle = X3DHBundleInput {
-        identity_public: bob_id_pub.try_into().unwrap(),
-        spk_id: bob_spk_id as u32,
-        spk_public: bob_spk_pub.try_into().unwrap(),
-        spk_signature: bob_spk_sig.try_into().unwrap(),
-        opk_id: bob_opk_id as u32,
-        opk_public: bob_opk_pub
-            .as_ref()
-            .and_then(|v| v.clone().try_into().ok())
-            .unwrap_or([0u8; 33]),
-        has_opk: bob_opk_pub.as_ref().map_or(false, |v| v.len() == 33),
-    };
-
-    // Build PreKeyBundle and call native API
+    // Build PreKeyBundle directly from extracted byte arrays
     let signed_prekey = SignedPreKey {
-        id: bundle.spk_id,
-        public_key: bundle.spk_public,
-        signature: bundle.spk_signature,
+        id: bob_spk_id as u32,
+        public_key: bob_spk_pub.try_into().unwrap(),
+        signature: bob_spk_sig.try_into().unwrap(),
     };
 
-    let one_time_prekey = if bundle.has_opk {
+    let one_time_prekey = if bob_opk_pub.as_ref().map_or(false, |v| v.len() == 33) {
         Some(OneTimePreKey {
-            id: bundle.opk_id,
-            public_key: bundle.opk_public,
+            id: bob_opk_id as u32,
+            public_key: bob_opk_pub.unwrap().try_into().unwrap(),
         })
     } else {
         None
     };
 
     let prekey_bundle = PreKeyBundle {
-        identity_key: bundle.identity_public,
+        identity_key: bob_id_pub.try_into().unwrap(),
         signed_prekey,
         one_time_prekey,
     };
@@ -199,37 +181,22 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_x3dhRe
     };
     let opk_priv = get_byte_array(&mut env, one_time_prekey_private_arr);
 
-    // Build X3DHResponderInput struct (shared pattern with C FFI)
-    let responder = X3DHResponderInput {
-        identity_private: id_priv.try_into().unwrap(),
-        spk_private: spk_priv.try_into().unwrap(),
-        opk_private: opk_priv
-            .as_ref()
-            .and_then(|v| v.clone().try_into().ok())
-            .unwrap_or([0u8; 32]),
-        has_opk: opk_priv.as_ref().map_or(false, |v| v.len() == 32),
-    };
-
-    // Build X3DHAliceKeys struct (shared pattern with C FFI)
-    let alice = X3DHAliceKeys {
-        identity_public: alice_id_pub.try_into().unwrap(),
-        ephemeral_public: alice_ek_pub.try_into().unwrap(),
-    };
+    // Convert to fixed arrays
+    let id_priv_fixed: [u8; 32] = id_priv.try_into().unwrap();
+    let spk_priv_fixed: [u8; 32] = spk_priv.try_into().unwrap();
+    let alice_id_pub_fixed: [u8; 33] = alice_id_pub.try_into().unwrap();
+    let alice_ek_pub_fixed: [u8; 33] = alice_ek_pub.try_into().unwrap();
 
     // Convert optional OPK
-    let opk_private = if responder.has_opk {
-        Some(&responder.opk_private)
-    } else {
-        None
-    };
+    let opk_priv_fixed: Option<[u8; 32]> = opk_priv.and_then(|v| v.try_into().ok());
 
-    // Call native Rust API
+    // Call native Rust API directly
     let result = x3dh_responder(
-        &responder.identity_private,
-        &responder.spk_private,
-        opk_private,
-        &alice.identity_public,
-        &alice.ephemeral_public,
+        &id_priv_fixed,
+        &spk_priv_fixed,
+        opk_priv_fixed.as_ref(),
+        &alice_id_pub_fixed,
+        &alice_ek_pub_fixed,
     );
 
     match result {

@@ -28,7 +28,7 @@ pub extern "C" fn gen_keypair_ffi() -> KeyPair {
 /// * `secret_out` must be a valid pointer to a writable 32-byte memory region.
 /// * The pointer must be properly aligned.
 #[unsafe(no_mangle)]
-pub extern "C" fn gen_secret_ffi(secret_out: *mut [u8; 32]) {
+pub unsafe extern "C" fn gen_secret_ffi(secret_out: *mut [u8; 32]) {
     let secret = gen_secret();
     unsafe {
         (*secret_out) = secret;
@@ -41,7 +41,7 @@ pub extern "C" fn gen_secret_ffi(secret_out: *mut [u8; 32]) {
 /// * `k` must be a valid pointer to a readable 32-byte secret key.
 /// * `pubkey` must be a valid pointer to a writable 32-byte memory region.
 #[unsafe(no_mangle)]
-pub extern "C" fn gen_pubkey_ffi(k: &[u8; 32], pubkey: *mut [u8; 33]) {
+pub unsafe extern "C" fn gen_pubkey_ffi(k: &[u8; 32], pubkey: *mut [u8; 33]) {
     let public = gen_pubkey(k);
     unsafe {
         (*pubkey) = public;
@@ -59,7 +59,7 @@ pub extern "C" fn gen_pubkey_ffi(k: &[u8; 32], pubkey: *mut [u8; 33]) {
 /// * `0` on success.
 /// * `-1` on error.
 #[unsafe(no_mangle)]
-pub extern "C" fn vxeddsa_sign_ffi(
+pub unsafe extern "C" fn vxeddsa_sign_ffi(
     k: &[u8; 32],
     msg_ptr: *const u8,
     msg_len: usize,
@@ -76,7 +76,7 @@ pub extern "C" fn vxeddsa_sign_ffi(
             }
             0
         }
-        Err(()) => -1,
+        Err(_) => -1,
     }
 }
 
@@ -90,7 +90,7 @@ pub extern "C" fn vxeddsa_sign_ffi(
 /// # Returns
 /// `true` if signature is valid, `false` otherwise.
 #[unsafe(no_mangle)]
-pub extern "C" fn vxeddsa_verify_ffi(
+pub unsafe extern "C" fn vxeddsa_verify_ffi(
     u: &[u8; 33],
     msg_ptr: *const u8,
     msg_len: usize,

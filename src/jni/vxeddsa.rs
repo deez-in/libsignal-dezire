@@ -75,8 +75,12 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_genKey
     map.into_raw()
 }
 
+/// Sign a message using VXEdDSA.
+///
+/// # Safety
+/// * `env`, `k_byte_array`, and `m_byte_array` must be valid JNI references.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxeddsaSign(
+pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxeddsaSign(
     mut env: JNIEnv,
     _class: jclass,
     k_byte_array: jbyteArray,
@@ -103,7 +107,7 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxedds
     // Call native API directly
     let output = match vxeddsa_sign(&k_arr, &m) {
         Ok(o) => o,
-        Err(()) => return JObject::null().into_raw(),
+        Err(_) => return JObject::null().into_raw(),
     };
 
     let map_class = match env.find_class("java/util/HashMap") {
@@ -158,8 +162,12 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxedds
     map.into_raw()
 }
 
+/// Verify a VXEdDSA signature.
+///
+/// # Safety
+/// * `env`, `u_byte_array`, `m_byte_array`, and `signature_byte_array` must be valid JNI references.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxeddsaVerify(
+pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxeddsaVerify(
     mut env: JNIEnv,
     _class: jclass,
     u_byte_array: jbyteArray,
@@ -198,8 +206,12 @@ pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_vxedds
     }
 }
 
+/// Generate a public key from a secret key.
+///
+/// # Safety
+/// * `env` and `k_byte_array` must be valid JNI references.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_genPubKey(
+pub unsafe extern "C" fn Java_expo_modules_libsignaldezire_LibsignalDezireModule_genPubKey(
     mut env: JNIEnv,
     _class: jclass,
     k_byte_array: jbyteArray,

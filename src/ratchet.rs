@@ -68,6 +68,12 @@ pub type DhPublicKey = PublicKey;
 pub type DhPrivateKey = StaticSecret;
 pub type KeyPair = (DhPrivateKey, DhPublicKey);
 
+/// Type alias for the skipped message keys map.
+type SkippedKeyMap = HashMap<([u8; 32], u32), SkippedKey>;
+
+/// Type alias for the KDF root key output triple (root_key, chain_key, next_header_key).
+type KdfRkOutput = ([u8; 32], [u8; 32], [u8; 32]);
+
 /// Skipped message key with timestamp for LRU eviction
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SkippedKey {
@@ -166,7 +172,7 @@ pub struct RatchetState {
         serialize_with = "serialize_skipped_map",
         deserialize_with = "deserialize_skipped_map"
     )]
-    pub(crate) mkskipped: HashMap<([u8; 32], u32), SkippedKey>,
+    pub(crate) mkskipped: SkippedKeyMap,
 
     // Nonce counter for header encryption (stateful, per-session)
     #[zeroize(skip)]
@@ -192,8 +198,8 @@ pub fn init_sender_state(
     sk: [u8; 32],
     receiver_dh_public_key: DhPublicKey,
 ) -> Result<RatchetState, RatchetError> {
-    let mut rng = rand_core::OsRng;
-    let dh_s = StaticSecret::random_from_rng(&mut rng);
+    let rng = rand_core::OsRng;
+    let dh_s = StaticSecret::random_from_rng(rng);
     let dh_s_pub = PublicKey::from(&dh_s);
 
     let dh_out = dh_s.diffie_hellman(&receiver_dh_public_key);
@@ -371,11 +377,11 @@ pub fn decrypt(
 /// Returns (updated_mkskipped, Some(plaintext)) if successful
 /// Returns (original_mkskipped, None) if not found
 fn try_skipped_message_keys(
-    mut mkskipped: HashMap<([u8; 32], u32), SkippedKey>,
+    mut mkskipped: SkippedKeyMap,
     enc_header: &[u8],
     ciphertext: &[u8],
     ad: &[u8],
-) -> Result<(HashMap<([u8; 32], u32), SkippedKey>, Option<Vec<u8>>), RatchetError> {
+) -> Result<(SkippedKeyMap, Option<Vec<u8>>), RatchetError> {
     // Try to decrypt header with each skipped header key
     // We need to collect keys to iterate to avoid borrow checker issues if we modify map
     // But we only remove if we find it and return immediately.
@@ -385,21 +391,20 @@ fn try_skipped_message_keys(
     let candidates: Vec<_> = mkskipped.keys().cloned().collect();
 
     for (hk, n) in candidates {
-        if let Some(skipped_key) = mkskipped.get(&(hk, n)) {
-            if let Ok(header) = decrypt_header_with_key(&hk, enc_header) {
-                if bool::from(n.ct_eq(&header.n)) {
-                    // Try to decrypt message
-                    match decrypt_aead(&skipped_key.mk, ciphertext, ad) {
-                        Ok(plaintext) => {
-                            // Success! Remove via key and return
-                            mkskipped.remove(&(hk, n));
-                            return Ok((mkskipped, Some(plaintext)));
-                        }
-                        Err(_) => {
-                            // Failed authentication, continue trying other keys
-                            continue;
-                        }
-                    }
+        if let Some(skipped_key) = mkskipped.get(&(hk, n))
+            && let Ok(header) = decrypt_header_with_key(&hk, enc_header)
+            && bool::from(n.ct_eq(&header.n))
+        {
+            // Try to decrypt message
+            match decrypt_aead(&skipped_key.mk, ciphertext, ad) {
+                Ok(plaintext) => {
+                    // Success! Remove via key and return
+                    mkskipped.remove(&(hk, n));
+                    return Ok((mkskipped, Some(plaintext)));
+                }
+                Err(_) => {
+                    // Failed authentication, continue trying other keys
+                    continue;
                 }
             }
         }
@@ -413,10 +418,10 @@ fn decrypt_header(
     enc_header: &[u8],
 ) -> Result<(RatchetHeader, bool), RatchetError> {
     // Try current receiving header key
-    if let Some(hk_r) = state.hk_r {
-        if let Ok(header) = decrypt_header_with_key(&hk_r, enc_header) {
-            return Ok((header, false)); // No DH ratchet needed
-        }
+    if let Some(hk_r) = state.hk_r
+        && let Ok(header) = decrypt_header_with_key(&hk_r, enc_header)
+    {
+        return Ok((header, false)); // No DH ratchet needed
     }
 
     // Try next receiving header key (indicates DH ratchet)
@@ -478,16 +483,16 @@ fn commit_state_changes(
 ) -> Result<(), RatchetError> {
     if dh_ratchet {
         // Store skipped keys from previous receiving chain
-        if let Some(ck_r) = state.ck_r {
-            if let Some(hk_r) = state.hk_r {
-                state.mkskipped = skip_message_keys(
-                    std::mem::take(&mut state.mkskipped),
-                    ck_r,
-                    hk_r,
-                    state.nr,
-                    header.pn,
-                )?;
-            }
+        if let Some(ck_r) = state.ck_r
+            && let Some(hk_r) = state.hk_r
+        {
+            state.mkskipped = skip_message_keys(
+                std::mem::take(&mut state.mkskipped),
+                ck_r,
+                hk_r,
+                state.nr,
+                header.pn,
+            )?;
         }
 
         // Perform DH ratchet
@@ -506,8 +511,8 @@ fn commit_state_changes(
         state.nhk_r = new_nhk_r;
 
         // Generate new DH key pair
-        let mut rng = rand_core::OsRng;
-        let new_dh_s = StaticSecret::random_from_rng(&mut rng);
+        let rng = rand_core::OsRng;
+        let new_dh_s = StaticSecret::random_from_rng(rng);
         let new_dh_s_pub = PublicKey::from(&new_dh_s);
 
         // Second KDF: derive sending chain
@@ -523,16 +528,16 @@ fn commit_state_changes(
     }
 
     // Store skipped keys in current receiving chain
-    if let Some(ck_r) = state.ck_r {
-        if let Some(hk_r) = state.hk_r {
-            state.mkskipped = skip_message_keys(
-                std::mem::take(&mut state.mkskipped),
-                ck_r,
-                hk_r,
-                state.nr,
-                header.n,
-            )?;
-        }
+    if let Some(ck_r) = state.ck_r
+        && let Some(hk_r) = state.hk_r
+    {
+        state.mkskipped = skip_message_keys(
+            std::mem::take(&mut state.mkskipped),
+            ck_r,
+            hk_r,
+            state.nr,
+            header.n,
+        )?;
     }
 
     // Advance to current message
@@ -551,12 +556,12 @@ fn commit_state_changes(
 /// Skip message keys in the current receiving chain
 /// Returns updated mkskipped map
 fn skip_message_keys(
-    mut mkskipped: HashMap<([u8; 32], u32), SkippedKey>,
+    mut mkskipped: SkippedKeyMap,
     mut ck: [u8; 32],
     hk: [u8; 32],
     from: u32,
     to: u32,
-) -> Result<HashMap<([u8; 32], u32), SkippedKey>, RatchetError> {
+) -> Result<SkippedKeyMap, RatchetError> {
     // Validate range.
     if to < from {
         return Err(RatchetError::InvalidHeader);
@@ -610,10 +615,7 @@ fn validate_encryption_state(state: &RatchetState) -> Result<(), RatchetError> {
 
 /// Evict oldest skipped keys to prevent memory exhaustion.
 /// Returns updated mkskipped map
-fn evict_oldest_skipped_keys(
-    mut mkskipped: HashMap<([u8; 32], u32), SkippedKey>,
-    target_size: usize,
-) -> HashMap<([u8; 32], u32), SkippedKey> {
+fn evict_oldest_skipped_keys(mut mkskipped: SkippedKeyMap, target_size: usize) -> SkippedKeyMap {
     let mut entries: Vec<_> = mkskipped.iter().map(|(k, v)| (*k, v.timestamp)).collect();
 
     // Sort by timestamp (oldest first)
@@ -633,10 +635,7 @@ fn evict_oldest_skipped_keys(
 // ----------------------------------------------------------------------------
 
 /// KDF_RK_HE: Derive root key, chain key, and next header key
-fn kdf_rk_he(
-    rk: &[u8; 32],
-    dh_out: &[u8; 32],
-) -> Result<([u8; 32], [u8; 32], [u8; 32]), RatchetError> {
+fn kdf_rk_he(rk: &[u8; 32], dh_out: &[u8; 32]) -> Result<KdfRkOutput, RatchetError> {
     let hk = Hkdf::<Sha512>::new(Some(rk), dh_out);
     let mut okm = [0u8; 96];
     hk.expand(HKDF_INFO_ROOT, &mut okm)
@@ -855,10 +854,7 @@ fn decrypt_aead(mk: &[u8; 32], ciphertext: &[u8], ad: &[u8]) -> Result<Vec<u8>, 
 // Serialization Helpers
 // ----------------------------------------------------------------------------
 
-fn serialize_skipped_map<S>(
-    map: &HashMap<([u8; 32], u32), SkippedKey>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_skipped_map<S>(map: &SkippedKeyMap, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -869,16 +865,14 @@ where
     seq.end()
 }
 
-fn deserialize_skipped_map<'de, D>(
-    deserializer: D,
-) -> Result<HashMap<([u8; 32], u32), SkippedKey>, D::Error>
+fn deserialize_skipped_map<'de, D>(deserializer: D) -> Result<SkippedKeyMap, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct MapVisitor;
 
     impl<'de> Visitor<'de> for MapVisitor {
-        type Value = HashMap<([u8; 32], u32), SkippedKey>;
+        type Value = SkippedKeyMap;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a sequence of skipped key entries")
