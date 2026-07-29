@@ -2,7 +2,7 @@
 name = "libsignal-dezire"
 version = "0.1.146"
 edition = "2024"
-repository= "https://github.com/debarkamondal/libsignal-dezire"
+repository= "https://github.com/nijhum-in/libsignal-dezire"
 license= "AGPL-3.0-only"
 description = "A rust implementation of signal protocol"
 
