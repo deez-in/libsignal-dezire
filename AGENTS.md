@@ -23,7 +23,7 @@ deezchatz-api  →  ⭐ libsignal-dezire (this crate)
   2. `src/ffi/` (C FFI bindings)
   3. `src/jni/` (Android JNI bindings)
   4. Flag that `expo-libsignal-dezire` native wrappers (Swift + Kotlin) need updating
-- **If you change VXEdDSA verification behavior**: `nijhum-api` uses `vxeddsa_verify` in its auth middleware — breaking changes will break authentication across the entire platform.
+- **If you change VXEdDSA verification behavior**: `deezchatz-api` uses `vxeddsa_verify` in its auth middleware — breaking changes will break authentication across the entire platform.
 - **If you change X3DH or Ratchet output formats**: the mobile app's session encryption will break.
 
 ---
