@@ -4,16 +4,16 @@ This document provides instructions and context for AI coding agents working in 
 
 ## Ecosystem Context
 
-> **This is the cryptographic foundation of the Nijhum ecosystem.** Every other repo depends on this crate — directly or indirectly.
+> **This is the cryptographic foundation of the DeezChatz ecosystem.** Every other repo depends on this crate — directly or indirectly.
 
 ```
-nijhum-mobile  →  expo-libsignal-dezire  →  ⭐ libsignal-dezire (this crate)
-nijhum-api  →  ⭐ libsignal-dezire (this crate)
+deezchatz-mobile  →  expo-libsignal-dezire  →  ⭐ libsignal-dezire (this crate)
+deezchatz-api  →  ⭐ libsignal-dezire (this crate)
 ```
 
 | Consumer | Dependency type | What it uses |
 |----------|----------------|--------------|
-| **nijhum-api** | `cargo` git dependency | `vxeddsa_verify` for signature verification during registration and auth |
+| **deezchatz-api** | `cargo` git dependency | `vxeddsa_verify` for signature verification during registration and auth |
 | **expo-libsignal-dezire** | Compiled to `.a` / `.so` via FFI/JNI features | Full API — key generation, X3DH, Double Ratchet, VXEdDSA |
 
 ### Cross-Repo Impact Rules

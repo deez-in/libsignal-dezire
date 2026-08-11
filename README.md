@@ -4,24 +4,24 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-orange.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Security Audit](https://img.shields.io/badge/Audit-Production_Ready-brightgreen.svg)](AUDIT.md)
 
-A pure Rust implementation of the [Signal Protocol](https://signal.org/docs/), providing end-to-end encryption for messaging applications. This is the **cryptographic foundation** of the [Nijhum](https://github.com/nijhum-in) ecosystem — every encrypted message, every key exchange, and every signature verification flows through this crate.
+A pure Rust implementation of the [Signal Protocol](https://signal.org/docs/), providing end-to-end encryption for messaging applications. This is the **cryptographic foundation** of the [DeezChatz](https://github.com/deez-in) ecosystem — every encrypted message, every key exchange, and every signature verification flows through this crate. Double ratchet secrecy, zero trust. Because ain't nobody reading Deez Chatz — least of all our servers. 🔒🔥
 
 ## Where This Fits
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Nijhum Mobile (React Native app)                    │
+│  DeezChatz Mobile (React Native app)                 │
 │    └─ expo-libsignal-dezire (Expo Native Module)     │
 │         └─ ⭐ libsignal-dezire (this crate)          │  ← C-FFI / JNI
 │                                                      │
-│  Nijhum API (Rust / Axum backend)                    │
+│  DeezChatz API (Rust / Axum backend)                 │
 │    └─ ⭐ libsignal-dezire (this crate)               │  ← cargo dependency
 └──────────────────────────────────────────────────────┘
 ```
 
 | Consumer | How it depends | What it uses |
 |----------|---------------|--------------|
-| **Nijhum API** | Cargo git dependency | `vxeddsa_verify` — to verify signatures during registration and per-request auth |
+| **DeezChatz API** | Cargo git dependency | `vxeddsa_verify` — to verify signatures during registration and per-request auth |
 | **expo-libsignal-dezire** | Compiled to `.a` (iOS) / `.so` (Android) via FFI | Everything — key generation, X3DH, Double Ratchet, signing, verification |
 
 > Changes to this crate's public API ripple across the entire stack. If you modify a function signature, the FFI bindings (`src/ffi/`, `libsignal-dezire.h`), JNI bindings (`src/jni/`), and the `expo-libsignal-dezire` wrappers all need updating.
@@ -71,7 +71,7 @@ Or from git:
 
 ```toml
 [dependencies]
-libsignal-dezire = { git = "https://github.com/nijhum-in/libsignal-dezire" }
+libsignal-dezire = { git = "https://github.com/deez-in/libsignal-dezire" }
 ```
 
 ---
@@ -206,7 +206,7 @@ ffi = []    # C bindings via extern "C"
 jni = []    # Android JNI bindings
 ```
 
-For React Native / Expo integration, see [expo-libsignal-dezire](https://github.com/nijhum-in/expo-libsignal-dezire), which wraps this crate's FFI in an Expo Native Module.
+For React Native / Expo integration, see [expo-libsignal-dezire](https://github.com/deez-in/expo-libsignal-dezire), which wraps this crate's FFI in an Expo Native Module.
 
 For direct C integration:
 
