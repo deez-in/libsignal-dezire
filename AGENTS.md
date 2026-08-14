@@ -1,8 +1,34 @@
-# Agentic Development Guide for libsignal-dezire
+# AGENTS.md — libsignal-dezire
 
-This document provides instructions, standards, and workflows for AI agents and developers working on the `libsignal-dezire` repository. This is a cryptographic library implementing the Signal Protocol; correctness, security, and performance are paramount.
+This document provides instructions and context for AI coding agents working in this repository.
 
-## 1. Environment & Commands
+## Ecosystem Context
+
+> **This is the cryptographic foundation of the DeezChatz ecosystem.** Every other repo depends on this crate — directly or indirectly.
+
+```
+deezchatz-mobile  →  expo-libsignal-dezire  →  ⭐ libsignal-dezire (this crate)
+deezchatz-api  →  ⭐ libsignal-dezire (this crate)
+```
+
+| Consumer | Dependency type | What it uses |
+|----------|----------------|--------------|
+| **deezchatz-api** | `cargo` git dependency | `vxeddsa_verify` for signature verification during registration and auth |
+| **expo-libsignal-dezire** | Compiled to `.a` / `.so` via FFI/JNI features | Full API — key generation, X3DH, Double Ratchet, VXEdDSA |
+
+### Cross-Repo Impact Rules
+
+- **If you change a public function signature**: you MUST also update:
+  1. `libsignal-dezire.h` (C header)
+  2. `src/ffi/` (C FFI bindings)
+  3. `src/jni/` (Android JNI bindings)
+  4. Flag that `expo-libsignal-dezire` native wrappers (Swift + Kotlin) need updating
+- **If you change VXEdDSA verification behavior**: `deezchatz-api` uses `vxeddsa_verify` in its auth middleware — breaking changes will break authentication across the entire platform.
+- **If you change X3DH or Ratchet output formats**: the mobile app's session encryption will break.
+
+---
+
+## Environment & Commands
 
 The project uses standard Rust tooling (`cargo`).
 
@@ -10,43 +36,50 @@ The project uses standard Rust tooling (`cargo`).
 - **Check (Fast):** `cargo check`
 - **Build (Dev):** `cargo build`
 - **Build (Release):** `cargo build --release`
+- **Build with FFI:** `cargo build --features ffi`
+- **Build with JNI:** `cargo build --features jni`
 - **Clean:** `cargo clean`
 
 ### Testing
 - **Run All Tests:** `cargo test`
-- **Run Specific Test:** `cargo test <test_name>`
-  - *Example:* `cargo test test_ratchet_basic_flow`
+- **Run Specific Test:** `cargo test <test_name>` (e.g., `cargo test test_ratchet_basic_flow`)
 - **Run Tests with Output:** `cargo test -- --nocapture`
 - **Run Ignored Tests:** `cargo test -- --ignored`
 
 ### Code Quality
-- **Format:** `cargo fmt` (Always run this before committing)
-- **Lint:** `cargo clippy -- -D warnings` (Ensure no warnings)
+- **Format:** `cargo fmt` (always run before committing)
+- **Lint:** `cargo clippy -- -D warnings` (ensure zero warnings)
 - **Documentation:** `cargo doc --open`
 
-## 2. Project Structure
+---
 
-- **`src/`**: Source code.
-  - `lib.rs`: Crate root, module exports.
-  - `ratchet.rs`: Double Ratchet implementation.
-  - `x3dh.rs`: Extended Triple Diffie-Hellman.
-  - `vxeddsa.rs`: VXEdDSA signatures.
-  - `ffi/`: Foreign Function Interface (C/JNI).
-- **`tests/`**: Integration tests.
-  - `ratchet_test.rs`: Tests for the ratchet module.
-  - `e2e_*.rs`: End-to-end scenarios.
+## Project Structure
 
-## 3. Code Style & Conventions
+```
+src/
+  lib.rs          # Crate root, module exports
+  vxeddsa.rs      # VXEdDSA signature scheme (sign + verify + VRF)
+  x3dh.rs         # X3DH key agreement protocol
+  ratchet.rs      # Double Ratchet algorithm (session encrypt/decrypt)
+  utils.rs        # Curve operations, key encoding/conversion
+  hashes.rs       # Domain-separated hash functions (hash_1..hash_5 per spec)
+  ffi/            # C-compatible extern "C" functions (behind `ffi` feature)
+  jni/            # Android JNI bindings (behind `jni` feature)
+tests/
+  ratchet_test.rs # Integration tests for the ratchet module
+  e2e_*.rs        # End-to-end scenarios
+```
 
-### General Rust Style
-- **Formatting:** Strictly follow `rustfmt` defaults (4 spaces indent).
-- **Naming:**
-  - Structs/Enums: `PascalCase`
-  - Functions/Variables/Modules: `snake_case`
-  - Constants: `SCREAMING_SNAKE_CASE`
-- **Imports:** Group imports at the top of the file.
+---
+
+## Code Style & Conventions
+
+### Rust Style
+- **Formatting:** Strictly follow `rustfmt` defaults (4-space indent)
+- **Naming:** Structs/Enums: `PascalCase`, Functions/Variables: `snake_case`, Constants: `SCREAMING_SNAKE_CASE`
+- **Import ordering:**
   ```rust
-  // Std
+  // Std library
   use std::collections::HashMap;
 
   // External crates
@@ -57,78 +90,71 @@ The project uses standard Rust tooling (`cargo`).
   use crate::ratchet::RatchetState;
   ```
 
-### Types & Error Handling
-- **Custom Errors:** Use specific error enums (e.g., `RatchetError`) rather than generic `Box<dyn Error>`.
-- **Result Return:** Most public functions should return `Result<T, ErrorEnum>`.
-- **Unwrap/Expect:**
-  - **Forbidden** in library code (`src/`). Use `?` operator or handle errors gracefully.
-  - **Allowed** in tests (`tests/` and `#[cfg(test)]`) for brevity.
+### Error Handling
+- Use specific error enums (e.g., `RatchetError`) — not `Box<dyn Error>`.
+- Public functions return `Result<T, ErrorEnum>`.
+- **`unwrap()` / `expect()` are FORBIDDEN in library code** (`src/`). Use `?` or handle errors.
+- `unwrap()` is allowed in tests (`tests/` and `#[cfg(test)]`).
 
 ### Documentation
-- **Module Level:** Use `//!` at the top of files to describe the module's purpose and spec references.
-- **Public API:** Use `///` doc comments for all public structs, enums, and functions.
-- **Examples:** Include code examples in doc comments where complex usage is involved.
+- Module-level: `//!` at the top of files describing purpose and spec references.
+- Public API: `///` doc comments on all public structs, enums, and functions.
+- Include code examples in doc comments for complex operations.
 
-## 4. Security & Cryptography Mandates
+---
 
-**CRITICAL:** This is a security-sensitive codebase.
+## Security & Cryptography Mandates
 
-1.  **Zeroization:**
-    -   All structs containing private keys or sensitive state MUST derive `Zeroize` and `ZeroizeOnDrop`.
-    -   Explicitly call `.zeroize()` on temporary sensitive variables (buffers, intermediate keys) before they go out of scope if `ZeroizeOnDrop` cannot be used.
+**CRITICAL: This is a security-sensitive codebase. Follow these rules without exception.**
 
-2.  **Constant-Time Operations:**
-    -   NEVER compare secrets or tags using `==`.
-    -   Use `subtle::ConstantTimeEq` (e.g., `ct_eq`) for checking MACs, signatures, or secrets.
-    -   Avoid branching on secret data.
+### MUST DO
+1. **Zeroization**: All structs containing private keys or sensitive state MUST derive `Zeroize` and `ZeroizeOnDrop`. Explicitly `.zeroize()` temporary sensitive buffers.
+2. **Constant-time comparisons**: Use `subtle::ConstantTimeEq` (`ct_eq`) for comparing MACs, signatures, and secrets. NEVER use `==` on secret data.
+3. **Cryptographic RNG**: Use `rand_core::OsRng` for all key generation. Never use `rand::thread_rng` or similar weak RNGs.
+4. **Dependency vetting**: Prefer established crypto crates (`dalek`, `RustCrypto` organization). Vet new dependencies carefully.
 
-3.  **Randomness:**
-    -   Use `rand_core::OsRng` (cryptographically secure RNG) for key generation.
-    -   Do not use weak RNGs like `rand::thread_rng` for crypto material.
+### DO NOT
+- **DO NOT** log key material, secrets, or intermediate cryptographic values (no `println!`, `tracing::debug!`, `dbg!` on sensitive data).
+- **DO NOT** use `unsafe` without explicit justification documented in a comment explaining why it's necessary and why it's sound.
+- **DO NOT** branch on secret data (no `if secret == ...`). All comparisons on secrets must be constant-time.
+- **DO NOT** return distinguishable errors for different failure modes in verification functions (this leaks information). Return a generic failure.
+- **DO NOT** use `Vec::with_capacity` with attacker-controlled sizes without bounds checking.
 
-4.  **Dependencies:**
-    -   Vet new dependencies carefully.
-    -   Prefer established crypto crates (`dalek`, `RustCrypto` organization) over obscure ones.
+---
 
-## 5. Testing Guidelines
+## Testing Guidelines
 
--   **Unit Tests:** Place in the same file as the code in a `#[cfg(test)] mod tests { ... }` block.
--   **Integration Tests:** Place in `tests/*.rs`. These simulate real usage via the public API.
--   **Edge Cases:** Explicitly test for:
-    -   Replay attacks (duplicate messages).
-    -   Out-of-order message delivery.
-    -   Malformed headers/inputs.
-    -   Limit exhaustion (e.g., `MAX_SKIP` limits).
+- **Unit tests**: Place in the same file as the code in a `#[cfg(test)] mod tests { ... }` block.
+- **Integration tests**: Place in `tests/*.rs`. These test the public API as a consumer would use it.
+- **Edge cases to test**: Replay attacks (duplicate messages), out-of-order delivery, malformed headers/inputs, `MAX_SKIP` limit exhaustion, low-order/invalid public keys.
 
-## 6. Workflow for Agents
+---
+
+## Workflow for Agents
 
 When implementing features or fixing bugs:
 
-1.  **Analyze Context:** Read related files first (e.g., if touching `ratchet.rs`, also read `tests/ratchet_test.rs`).
-2.  **Plan:** Outline the changes. Check if they impact the state machine or crypto properties.
-3.  **Implement:** Write code adhering to the style above.
-4.  **Verify:**
-    -   Create or update a test case covering the change.
-    -   Run `cargo test <your_new_test_name>` to verify.
-    -   Run `cargo clippy` to ensure no linting errors.
-    -   Run `cargo fmt` to fix formatting.
-5.  **Review:** Double-check strictly for security violations (leaking secrets via logs, timing side-channels).
+1. **Read context**: Read related files first (e.g., if touching `ratchet.rs`, also read `tests/ratchet_test.rs`).
+2. **Plan**: Check if changes impact the state machine, crypto properties, or FFI surface.
+3. **Implement**: Write code following the style and security rules above.
+4. **Test**: Create or update tests covering the change. Run `cargo test`, `cargo clippy`, `cargo fmt`.
+5. **Review**: Double-check for security violations — leaked secrets in logs, timing side-channels, missing zeroization.
 
-## 7. Troubleshooting
+---
 
--   **"Borrow checker errors with Zeroize":** Ensure you aren't trying to use a value after it has been dropped/zeroized.
--   **"Linker errors":** If modifying FFI, ensure C dependencies or correct target architectures are set.
--   **"Crypto test failures":** Check vector endianness (Signal often uses Big Endian for network, Little Endian for curve math).
+## Troubleshooting
 
-## 8. Security Audit
+- **Borrow checker errors with Zeroize**: Ensure you aren't using a value after it's been dropped/zeroized.
+- **Linker errors**: If modifying FFI, ensure C dependencies and correct target architectures are set.
+- **Crypto test failures**: Check endianness — Signal uses big-endian for network, little-endian for curve math.
+
+---
+
+## Security Audit
 
 This codebase has been security audited. See [AUDIT.md](./AUDIT.md) for:
 - Compliance with Signal specifications (XEdDSA, X3DH, Double Ratchet)
 - Identified issues and their resolutions
-- Security properties verified (forward secrecy, post-compromise security, etc.)
+- Security properties verified
 
-**Current Status:** Production Ready ✅
-
----
-*Generated for AI Agent usage within libsignal-dezire.*
-
+**Current Status:** ✅ Production Ready
