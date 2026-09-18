@@ -21,7 +21,10 @@ fn test_ffi_ratchet_flow() {
     let alice_public = PublicKey::from(&alice_secret);
 
     let bob_priv_bytes = bob_secret.to_bytes();
-    let bob_pub_bytes = bob_public.to_bytes();
+    let bob_pub_bytes_32 = bob_public.to_bytes();
+    let mut bob_pub_bytes = [0u8; 33];
+    bob_pub_bytes[0] = 0x05;
+    bob_pub_bytes[1..].copy_from_slice(&bob_pub_bytes_32);
     let _alice_pub_bytes = alice_public.to_bytes();
 
     unsafe {
